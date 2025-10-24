@@ -55,6 +55,7 @@ export const EnergyProvider = ({ children }) => {
   const [applianceNamesEnergyCost, setApplianceNamesEnergyCost] =
     useState(initialObject);
   const [miscellaneousItems, setMiscellaneousItems] = useState([]);
+  const [userEmail, setUserEmail] = useState("");
 
   const handleChoiceChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -123,6 +124,8 @@ export const EnergyProvider = ({ children }) => {
         setMiscellaneousItems,
         totalEnergyConsumption,
         totalEnergyUsage,
+        userEmail,
+        setUserEmail,
       }}
     >
       {children}

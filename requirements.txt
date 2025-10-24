@@ -7,3 +7,6 @@ numpy
 scipy
 jupyterlab
 pulp
+fastapi
+uvicorn
+python-multipart

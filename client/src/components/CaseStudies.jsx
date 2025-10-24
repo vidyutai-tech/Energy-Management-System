@@ -3,6 +3,8 @@ import CaseStudy1 from "./caseStudies/CaseStudy1";
 import CaseStudy2 from "./caseStudies/CaseStudy2";
 import CaseStudy3 from "./caseStudies/CaseStudy3";
 import CaseStudy4 from "./caseStudies/CaseStudy4";
+import LoadOptimization from "./caseStudies/LoadOptimization";
+import ErrorBoundary from "./ui/ErrorBoundary";
 
 const CaseStudies = () => {
   const [activeSection, setActiveSection] = useState("Case Study 1");
@@ -50,12 +52,27 @@ const CaseStudies = () => {
         >
           Peak Demand Forecasting
         </button>
+        <button
+          className={`mx-2 px-4 py-2 rounded-lg ${
+            activeSection === "Load Optimization"
+              ? "bg-blue-600 text-white"
+              : "bg-gray-200 text-gray-700"
+          }`}
+          onClick={() => setActiveSection("Load Optimization")}
+        >
+          Load Optimization
+        </button>
       </div>
       <div className="border p-6 rounded-lg bg-white shadow-md bg-gradient-to-r from-blue-100 to-green-100">
         {activeSection === "Case Study 1" && <CaseStudy1 />}
         {activeSection === "Case Study 2" && <CaseStudy2 />}
         {activeSection === "Case Study 3" && <CaseStudy3 />}
         {activeSection === "Case Study 4" && <CaseStudy4 />}
+        {activeSection === "Load Optimization" && (
+          <ErrorBoundary>
+            <LoadOptimization />
+          </ErrorBoundary>
+        )}
       </div>
     </div>
   );

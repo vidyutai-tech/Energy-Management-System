@@ -66,6 +66,100 @@ app.post("/submit", async (req, res) => {
   }
 });
 
+// POST route to handle load optimization data
+app.post("/save-load-optimization", async (req, res) => {
+  try {
+    const { 
+      email = "anonymous@example.com", // Default email if not provided
+      weather,
+      num_days,
+      time_resolution_minutes,
+      grid_connection,
+      solar_connection,
+      battery_capacity,
+      battery_voltage,
+      diesel_capacity,
+      fuel_price,
+      pv_energy_cost,
+      load_curtail_cost,
+      battery_om_cost,
+      profile_type,
+      optimizationResults,
+      timestamp
+    } = req.body;
+
+    // Find existing user or create a new one
+    let user = await User.findOne({ email });
+    
+    if (!user) {
+      // Create a new user with minimal data
+      user = new User({
+        name: "Anonymous User",
+        email,
+        appliances: new Map(),
+        misc: [],
+        choices: {
+          energySource: [],
+          dieselUse: "",
+          energyGoal: ""
+        },
+        totalEnergyUsage: 0,
+        loadOptimizationData: []
+      });
+    }
+
+    // Add the load optimization data
+    const optimizationData = {
+      timestamp: timestamp ? new Date(timestamp) : new Date(),
+      weather,
+      num_days,
+      time_resolution_minutes,
+      grid_connection,
+      solar_connection,
+      battery_capacity,
+      battery_voltage,
+      diesel_capacity,
+      fuel_price,
+      pv_energy_cost,
+      load_curtail_cost,
+      battery_om_cost,
+      profile_type,
+      optimizationResults
+    };
+
+    user.loadOptimizationData.push(optimizationData);
+    await user.save();
+
+    res.status(200).json({ 
+      message: "Load optimization data saved successfully!",
+      dataId: optimizationData.timestamp
+    });
+  } catch (error) {
+    console.error("Error saving load optimization data", error);
+    res.status(500).json({ message: "Failed to save load optimization data" });
+  }
+});
+
+// GET route to retrieve load optimization history for a user
+app.get("/load-optimization-history/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+    const user = await User.findOne({ email });
+    
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.status(200).json({
+      message: "Load optimization history retrieved successfully",
+      data: user.loadOptimizationData || []
+    });
+  } catch (error) {
+    console.error("Error retrieving load optimization history", error);
+    res.status(500).json({ message: "Failed to retrieve load optimization history" });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
