@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Integration Test Script for Load Optimization
+ * Integration Test Script for Source Optimization
  * This script tests the complete flow from frontend to backend to database
  */
 
@@ -59,7 +59,7 @@ async function testNodeAPI() {
     const healthResponse = await axios.get(`${NODE_API_URL}/`);
     console.log('✅ Node.js API health check:', healthResponse.data);
     
-    // Test load optimization save endpoint
+    // Test source optimization save endpoint
     const testData = {
       email: 'test@example.com',
       weather: 'Sunny',
@@ -105,7 +105,7 @@ async function testNodeAPI() {
 }
 
 async function runIntegrationTest() {
-  console.log('🚀 Starting Load Optimization Integration Test');
+  console.log('🚀 Starting Source Optimization Integration Test');
   console.log('=' .repeat(50));
   
   try {
@@ -117,7 +117,7 @@ async function runIntegrationTest() {
     console.log('');
     console.log('📋 Next steps:');
     console.log('1. Start the React frontend: cd client && npm run dev');
-    console.log('2. Navigate to Case Studies > Load Optimization');
+    console.log('2. Navigate to Case Studies > Source Optimization');
     console.log('3. Configure parameters and run optimization');
     console.log('4. Check MongoDB for saved data');
     

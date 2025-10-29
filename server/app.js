@@ -66,7 +66,7 @@ app.post("/submit", async (req, res) => {
   }
 });
 
-// POST route to handle load optimization data
+// POST route to handle source optimization data
 app.post("/save-load-optimization", async (req, res) => {
   try {
     const { 
@@ -108,7 +108,7 @@ app.post("/save-load-optimization", async (req, res) => {
       });
     }
 
-    // Add the load optimization data
+    // Add the source optimization data
     const optimizationData = {
       timestamp: timestamp ? new Date(timestamp) : new Date(),
       weather,
@@ -131,16 +131,16 @@ app.post("/save-load-optimization", async (req, res) => {
     await user.save();
 
     res.status(200).json({ 
-      message: "Load optimization data saved successfully!",
+      message: "Source optimization data saved successfully!",
       dataId: optimizationData.timestamp
     });
   } catch (error) {
-    console.error("Error saving load optimization data", error);
-    res.status(500).json({ message: "Failed to save load optimization data" });
+    console.error("Error saving source optimization data", error);
+    res.status(500).json({ message: "Failed to save source optimization data" });
   }
 });
 
-// GET route to retrieve load optimization history for a user
+// GET route to retrieve source optimization history for a user
 app.get("/load-optimization-history/:email", async (req, res) => {
   try {
     const { email } = req.params;
@@ -151,12 +151,12 @@ app.get("/load-optimization-history/:email", async (req, res) => {
     }
 
     res.status(200).json({
-      message: "Load optimization history retrieved successfully",
+      message: "Source optimization history retrieved successfully",
       data: user.loadOptimizationData || []
     });
   } catch (error) {
-    console.error("Error retrieving load optimization history", error);
-    res.status(500).json({ message: "Failed to retrieve load optimization history" });
+    console.error("Error retrieving source optimization history", error);
+    res.status(500).json({ message: "Failed to retrieve source optimization history" });
   }
 });
 

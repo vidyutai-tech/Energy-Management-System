@@ -158,7 +158,7 @@ const LoadOptimization = () => {
       <div className="card bg-base-100 shadow-xl">
         <div className="card-body">
           <h2 className="card-title text-2xl font-bold mb-6 text-center">
-            Load Optimization Analysis
+            Source Optimization Analysis
           </h2>
           <p className="text-center mb-6 text-gray-600">
             Optimize your energy management system by analyzing load patterns, 

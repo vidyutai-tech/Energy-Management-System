@@ -12,7 +12,7 @@ class ErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     // eslint-disable-next-line no-console
-    console.error("Load Optimization render error:", error, errorInfo);
+    console.error("Source Optimization render error:", error, errorInfo);
   }
 
   render() {

@@ -1,12 +1,12 @@
-# Load Optimization Integration Guide
+# Source Optimization Integration Guide
 
-This document explains how to run the integrated Energy Management System with the new Load Optimization feature.
+This document explains how to run the integrated Energy Management System with the new Source Optimization feature.
 
 ## Overview
 
-The Load Optimization feature has been successfully integrated into the Energy Management System. It includes:
+The Source Optimization feature has been successfully integrated into the Energy Management System. It includes:
 
-- A new "Load Optimization" tab in the Case Studies section
+- A new "Source Optimization" tab in the Case Studies section
 - Python FastAPI backend for optimization calculations
 - MongoDB integration for data persistence
 - React frontend with comprehensive form and results display
@@ -16,7 +16,7 @@ The Load Optimization feature has been successfully integrated into the Energy M
 ```
 Frontend (React) → Node.js Server → MongoDB
        ↓
-Python FastAPI (Load Optimization)
+Python FastAPI (Source Optimization)
 ```
 
 ## Setup Instructions
@@ -81,9 +81,9 @@ The frontend will be available at `http://localhost:5173`
 
 ## Features
 
-### Load Optimization Tab
+### Source Optimization Tab
 
-The new Load Optimization tab provides:
+The new Source Optimization tab provides:
 
 1. **Parameter Configuration**:
    - Weather conditions (Sunny/Rainy)
@@ -111,7 +111,7 @@ The new Load Optimization tab provides:
 
 ### Python FastAPI Endpoints
 
-- `POST /optimize` - Run load optimization with parameters
+- `POST /optimize` - Run source optimization with parameters
 - `POST /optimize/plot` - Generate visualization plots
 - `GET /` - Health check
 
@@ -123,7 +123,7 @@ The new Load Optimization tab provides:
 
 ## Database Schema
 
-The MongoDB schema has been extended to include load optimization data:
+The MongoDB schema has been extended to include source optimization data:
 
 ```javascript
 loadOptimizationData: [{
@@ -160,7 +160,7 @@ loadOptimizationData: [{
 
 1. Start all three servers (Python API, Node.js, React)
 2. Navigate to the Case Studies section
-3. Click on the "Load Optimization" tab
+3. Click on the "Source Optimization" tab
 4. Configure your parameters or upload custom data
 5. Click "Run Optimization"
 6. View results and insights
@@ -191,4 +191,4 @@ loadOptimizationData: [{
 
 ## Support
 
-For issues or questions regarding the Load Optimization integration, please check the console logs and ensure all services are running properly.
+For issues or questions regarding the Source Optimization integration, please check the console logs and ensure all services are running properly.

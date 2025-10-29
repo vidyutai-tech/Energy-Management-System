@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "Starting Energy Management System with Load Optimization..."
+echo "Starting Energy Management System with Source Optimization..."
 echo
 
 # Function to check if a port is in use

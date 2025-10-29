@@ -3,7 +3,7 @@ import CaseStudy1 from "./caseStudies/CaseStudy1";
 import CaseStudy2 from "./caseStudies/CaseStudy2";
 import CaseStudy3 from "./caseStudies/CaseStudy3";
 import CaseStudy4 from "./caseStudies/CaseStudy4";
-import LoadOptimization from "./caseStudies/LoadOptimization";
+import LoadOptimization from "./caseStudies/SourceOptimization";
 import ErrorBoundary from "./ui/ErrorBoundary";
 
 const CaseStudies = () => {
@@ -54,13 +54,13 @@ const CaseStudies = () => {
         </button>
         <button
           className={`mx-2 px-4 py-2 rounded-lg ${
-            activeSection === "Load Optimization"
+            activeSection === "Source Optimization"
               ? "bg-blue-600 text-white"
               : "bg-gray-200 text-gray-700"
           }`}
-          onClick={() => setActiveSection("Load Optimization")}
-        >
-          Load Optimization
+          onClick={() => setActiveSection("Source Optimization")}
+            >
+              Source Optimization
         </button>
       </div>
       <div className="border p-6 rounded-lg bg-white shadow-md bg-gradient-to-r from-blue-100 to-green-100">
@@ -68,7 +68,7 @@ const CaseStudies = () => {
         {activeSection === "Case Study 2" && <CaseStudy2 />}
         {activeSection === "Case Study 3" && <CaseStudy3 />}
         {activeSection === "Case Study 4" && <CaseStudy4 />}
-        {activeSection === "Load Optimization" && (
+        {activeSection === "Source Optimization" && (
           <ErrorBoundary>
             <LoadOptimization />
           </ErrorBoundary>
