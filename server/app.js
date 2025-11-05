@@ -9,15 +9,21 @@ dotenv.config();
 const app = express();
 const mongoURL = process.env.DB_URL;
 
-// Connect to MongoDB
-mongoose
-  .connect(mongoURL)
-  .then(() => {
-    console.log("Connected to MongoDB");
-  })
-  .catch((err) => {
-    console.error("Failed to connect to MongoDB", err);
-  });
+// Connect to MongoDB only if DB_URL is provided
+if (mongoURL) {
+  mongoose
+    .connect(mongoURL)
+    .then(() => {
+      console.log("Connected to MongoDB");
+    })
+    .catch((err) => {
+      console.error("Failed to connect to MongoDB", err);
+      console.warn("Server will continue without database connection. Database features will be unavailable.");
+    });
+} else {
+  console.warn("DB_URL not found in environment variables. MongoDB connection skipped.");
+  console.warn("To enable database features, create a .env file in the server directory with: DB_URL=mongodb://localhost:27017/energy-management-system");
+}
 
 app.use(cors());
 app.use(express.json());
@@ -29,6 +35,10 @@ app.get("/", (req, res) => {
 // POST route to handle form submission
 app.post("/submit", async (req, res) => {
   try {
+    if (!mongoURL || mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ message: "Database not available. Please configure MongoDB connection." });
+    }
+
     const { name, email, appliances, misc, choices, totalEnergyUsage } =
       req.body;
 
@@ -69,6 +79,10 @@ app.post("/submit", async (req, res) => {
 // POST route to handle source optimization data
 app.post("/save-load-optimization", async (req, res) => {
   try {
+    if (!mongoURL || mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ message: "Database not available. Please configure MongoDB connection." });
+    }
+
     const { 
       email = "anonymous@example.com", // Default email if not provided
       weather,
@@ -143,6 +157,10 @@ app.post("/save-load-optimization", async (req, res) => {
 // GET route to retrieve source optimization history for a user
 app.get("/load-optimization-history/:email", async (req, res) => {
   try {
+    if (!mongoURL || mongoose.connection.readyState !== 1) {
+      return res.status(503).json({ message: "Database not available. Please configure MongoDB connection." });
+    }
+
     const { email } = req.params;
     const user = await User.findOne({ email });
     

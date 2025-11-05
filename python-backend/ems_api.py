@@ -6,6 +6,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pulp import *
 from io import BytesIO
+import shutil
+import os
 
 app = FastAPI(title="Energy Management System Optimizer API")
 
@@ -64,7 +66,9 @@ def run_optimization(params, load_profile_24h, price_profile_24h):
     except (ValueError, TypeError, KeyError) as e:
         raise ValueError(f"Invalid input parameters: {str(e)}")
 
-    # Convert Wh to Ah for battery calculations
+    # Battery capacity: API receives Wh, convert to Ah for notebook compatibility
+    # Notebook expects battery_capacity in Ah, but we're receiving Wh
+    # So we convert: battery_capacity_wh = battery_capacity (from form) is in Wh
     battery_capacity_ah = battery_capacity_wh / battery_voltage  # Ah
 
     # Weather → solar scaling (matching notebook)
@@ -123,9 +127,11 @@ def run_optimization(params, load_profile_24h, price_profile_24h):
     solar_profile = upsample_profile(solar_profile_base, steps_per_hour, num_days)
 
 
-    # System capacities / derived values (matching notebook)
+    # System capacities / derived values (matching notebook exactly)
     grid_max_power = grid_connection
     solar_capacity = solar_connection
+    # Notebook: battery_storage_energy = (battery_capacity * battery_voltage) / 1000
+    # Since we receive Wh, we convert: battery_storage_energy = battery_capacity_wh / 1000
     battery_storage_energy = battery_capacity_wh / 1000.0  # Convert Wh to kWh
     battery_power = battery_storage_energy * 0.5  # kW, 0.5C rate as in notebook
     bess_charge_capacity = battery_power
@@ -248,29 +254,53 @@ def run_optimization(params, load_profile_24h, price_profile_24h):
         for t in T
     ])
 
-    # Solve
-    solver = PULP_CBC_CMD(msg=0, timeLimit=180, gapRel=0.01)
+    # Solve - Use system-installed CBC if available (ARM64 compatible), otherwise fall back to bundled
+    cbc_path = shutil.which('cbc')
+    if cbc_path:
+        # Use system-installed CBC (fixes "Bad CPU type" error on Apple Silicon)
+        os.environ['COIN_CMD'] = cbc_path
+        solver = COIN_CMD(msg=0, timeLimit=180, gapRel=0.01)
+        print(f"Using system CBC solver at: {cbc_path}")
+    else:
+        # Fall back to bundled CBC
+        solver = PULP_CBC_CMD(msg=0, timeLimit=180, gapRel=0.01)
+        print("Using bundled CBC solver")
     model.solve(solver)
 
-    # Gather results
+    # Gather results (matching notebook structure exactly)
     time_hours = [t * step_size for t in T]
+    
+    # Calculate H2 levels at end of each time step (for plotting, matching notebook)
+    h2_levels_for_plot = []
+    for t in T:
+        h2_at_end_of_t = value(E_h2[t]) + value(H_produced[t]) * step_size - value(P_fc[t]) * step_size * fc_conversion_rate
+        h2_levels_for_plot.append(h2_at_end_of_t)
+    
     results = {
+        'Time_Step': list(range(time_horizon)),
         'Time_Hours': time_hours,
         'Load_Demand': load_profile,
         'Price': price_profile,
         'Grid_Power': [value(P_grid[t]) for t in T],
         'Load_Curtailed': [value(P_load_curt[t]) for t in T],
         'Diesel_Power': [value(P_diesel[t]) for t in T],
-        'Fuel_Use_l': [value(F_diesel[t]) for t in T],
+        'Fuel_Use_l': [value(F_diesel[t]) for t in T],  # Fuel consumption in liters per time step
+        'Fuel_Cost': [fuel_price * value(F_diesel[t]) for t in T],  # Fuel cost per time step
         'Charge_Power': [value(P_charge[t]) for t in T],
         'Discharge_Power': [value(P_discharge[t]) for t in T],
-        'Battery_Level_kWh': [value(E_battery[t]) for t in T],
+        'Net_Battery_Power': [value(P_discharge[t]) - value(P_charge[t]) for t in T],
+        'Battery_Level': [value(E_battery[t]) for t in T],
+        'Battery_SOC': [value(E_battery[t]) / bess_energy_capacity * 100 for t in T],  # Battery SOC in %
         'Solar_Available': [solar_profile[t] * solar_capacity for t in T],
         'PV_Used': [value(P_pv_used[t]) for t in T],
         'Solar_Curtailed': [value(P_solar_curt[t]) for t in T],
         'Electrolyzer_Power': [value(P_elec[t]) for t in T],
         'Fuel_Cell_Power': [value(P_fc[t]) for t in T],
-        'H2_Level_kg': [value(E_h2[t]) for t in T],
+        'Net_H2_Power': [value(P_fc[t]) - value(P_elec[t]) for t in T],
+        'H2_Level': h2_levels_for_plot,  # H2 level at end of each step
+        'H2_SOC': [level / h2_tank_capacity * 100 for level in h2_levels_for_plot],  # H2 SOC in %
+        'Fuel_Cell_OM_Cost': [fuel_cell_om_cost * value(P_fc[t]) * step_size for t in T],
+        'H2_Produced_kg': [value(H_produced[t]) for t in T]  # H2 produced per time step
     }
 
     # Aggregates (matching notebook calculations)
@@ -286,11 +316,14 @@ def run_optimization(params, load_profile_24h, price_profile_24h):
     total_discharge = sum(results['Discharge_Power']) * step_size
     battery_om_total = total_discharge * battery_om_cost
     
-    # Hydrogen system totals
-    total_h2_produced_kwh = sum(results['Electrolyzer_Power']) * step_size
-    total_h2_consumed_kwh = sum(results['Fuel_Cell_Power']) * step_size
-    fuel_cell_om_total = total_h2_consumed_kwh * fuel_cell_om_cost
-    electrolyzer_om_total = total_h2_produced_kwh * electrolyzer_om_cost
+    # Hydrogen system totals (matching notebook calculations)
+    total_h2_produced_kwh_input = sum(results['Electrolyzer_Power']) * step_size
+    total_h2_produced_kg = sum(results['H2_Produced_kg']) * step_size
+    total_h2_consumed_kwh_output = sum(results['Fuel_Cell_Power']) * step_size
+    total_h2_consumed_kg = total_h2_consumed_kwh_output * fc_conversion_rate
+    fuel_cell_om_total = sum(results['Fuel_Cell_OM_Cost'])
+    electrolyzer_om_total = total_h2_produced_kwh_input * electrolyzer_om_cost
+    round_trip_efficiency_h2 = (total_h2_consumed_kwh_output / total_h2_produced_kwh_input * 100) if total_h2_produced_kwh_input > 0 else 0
     
     # Cost calculations (matching notebook)
     grid_cost = sum(max(0.0, results['Grid_Power'][t]) * price_profile[t] * step_size for t in range(time_horizon))
@@ -327,10 +360,14 @@ def run_optimization(params, load_profile_24h, price_profile_24h):
             "Used_Percent": round((total_pv_used/total_pv_avail*100) if total_pv_avail>0 else 0, 1)
         },
         "Hydrogen": {
-            "Electrolyzer_Energy_kWh": round(total_h2_produced_kwh, 2),
-            "Fuel_Cell_Energy_kWh": round(total_h2_consumed_kwh, 2),
+            "Energy_to_Electrolyzer_kWh": round(total_h2_produced_kwh_input, 2),
+            "Energy_from_Fuel_Cell_kWh": round(total_h2_consumed_kwh_output, 2),
+            "Hydrogen_Produced_kg": round(total_h2_produced_kg, 2),
+            "Hydrogen_Consumed_kg": round(total_h2_consumed_kg, 2),
             "Fuel_Cell_OM_Cost_INR": round(fuel_cell_om_total, 2),
-            "Electrolyzer_OM_Cost_INR": round(electrolyzer_om_total, 2)
+            "Electrolyzer_OM_Cost_INR": round(electrolyzer_om_total, 2),
+            "Round_Trip_Efficiency_percent": round(round_trip_efficiency_h2, 1),
+            "Effective_Conversion_kWh_per_kg": round(total_h2_produced_kwh_input/total_h2_produced_kg if total_h2_produced_kg > 0 else 0, 2)
         },
         "Costs": {
             "Grid_Cost_INR": round(grid_cost, 2),
@@ -344,33 +381,64 @@ def run_optimization(params, load_profile_24h, price_profile_24h):
         }
     }
 
-    # Plot: dispatch overview (matching notebook style)
-    plt.style.use("seaborn-v0_8-whitegrid")
-    plt.rcParams.update({'font.size': 12, 'font.family': 'serif', 'axes.labelweight': 'bold', 'axes.titleweight': 'bold'})
+    # Generate all plots (matching notebook exactly)
+    plt.style.use('seaborn-v0_8-whitegrid')
+    plt.rcParams.update({'font.size': 14, 'font.family': 'serif', 'axes.labelweight': 'bold', 'axes.titleweight': 'bold'})
     colors = {'load': "#010103", 'grid': "#0863D1", 'diesel': "#72394F", 'battery': "#8938F3", 'solar': "#6BF520", 'h2': "#17becf", 'price': "#CA3510", 'cost': "#25E8F3"}
     
-    plt.figure(figsize=(12, 8))
-    plt.plot(time_hours, results['Load_Demand'], color=colors['load'], label='Load (kW)', linewidth=3, markersize=6, markerfacecolor='white', markeredgewidth=2, markevery=max(1, len(time_hours)//100))
-    plt.plot(time_hours, results['PV_Used'], color=colors['solar'], label='Solar PV (kW)', linewidth=2.5, markersize=5, alpha=0.8, markevery=max(1, len(time_hours)//100))
-    plt.plot(time_hours, results['Grid_Power'], color=colors['grid'], label='Grid Import/Export (kW)', linewidth=2.5, markersize=5, alpha=0.8, markevery=max(1, len(time_hours)//100))
-    plt.plot(time_hours, results['Diesel_Power'], color=colors['diesel'], label='Diesel Gen (kW)', linewidth=2.5, markersize=5, alpha=0.8, markevery=max(1, len(time_hours)//100))
-    plt.plot(time_hours, [d - c for d, c in zip(results['Discharge_Power'], results['Charge_Power'])], color=colors['battery'], label='Battery Power (kW)', linewidth=2.5, markersize=5, alpha=0.8, markevery=max(1, len(time_hours)//100))
-    plt.plot(time_hours, [fc - elec for fc, elec in zip(results['Fuel_Cell_Power'], results['Electrolyzer_Power'])], color=colors['h2'], label='Hydrogen System (kW)', linewidth=2.5, markersize=6, alpha=0.8, markevery=max(1, len(time_hours)//100))
+    # Create a figure with 3 subplots (vertical layout)
+    fig = plt.figure(figsize=(10, 18))
     
-    plt.title(f'Optimal Power Dispatch Strategy ({num_days} Day{"s" if num_days > 1 else ""}, {time_resolution_minutes}-min resolution)', fontsize=16, pad=20, fontweight='bold')
-    plt.xlabel('Time [hours]', fontsize=14)
-    plt.ylabel('Power [kW]', fontsize=14)
-    plt.legend(loc='upper right', fontsize=10, framealpha=0.9, ncol=3)
-    plt.grid(True, alpha=0.3)
-    plt.xlim(-0.5, num_days * 24 + 0.5)
-    plt.ylim(min(-0.1*grid_max_power, min(results['Grid_Power']) - 0.1*grid_max_power), max(1.3*grid_max_power, max(results['Load_Demand']) + 0.1*grid_max_power))
+    # Plot 1: Power Dispatch Strategy
+    ax1 = plt.subplot(3, 1, 1)
+    ax1.plot(results['Time_Hours'], results['Load_Demand'], color=colors['load'], label='Load Demand', linewidth=3, markersize=6, markerfacecolor='white', markeredgewidth=2, markevery=max(1, len(results['Time_Hours'])//100))
+    ax1.plot(results['Time_Hours'], results['Grid_Power'], color=colors['grid'], label='Grid Power', linewidth=2.5, markersize=5, alpha=0.8, markevery=max(1, len(results['Time_Hours'])//100))
+    ax1.plot(results['Time_Hours'], results['Diesel_Power'], color=colors['diesel'], label='Diesel Gen', linewidth=2.5, markersize=5, alpha=0.8, markevery=max(1, len(results['Time_Hours'])//100))
+    ax1.plot(results['Time_Hours'], results['PV_Used'], color=colors['solar'], label='Solar PV', linewidth=2.5, markersize=5, alpha=0.8, markevery=max(1, len(results['Time_Hours'])//100))
+    ax1.plot(results['Time_Hours'], results['Net_Battery_Power'], color=colors['battery'], label='Battery Power', linewidth=2.5, markersize=5, alpha=0.8, markevery=max(1, len(results['Time_Hours'])//100))
+    ax1.plot(results['Time_Hours'], results['Net_H2_Power'], color=colors['h2'], label='Hydrogen Sys Power', linewidth=2.5, markersize=6, alpha=0.8, markevery=max(1, len(results['Time_Hours'])//100))
+    ax1.set_title(f'Optimal Power Dispatch Strategy ({num_days} Day{"s" if num_days > 1 else ""}, {time_resolution_minutes}-min resolution)', fontsize=16, pad=20, fontweight='bold')
+    ax1.set_xlabel('Time [hours]', fontsize=14)
+    ax1.set_ylabel('Power [kW]', fontsize=14)
+    ax1.legend(loc='upper right', fontsize=10, framealpha=0.9, ncol=3)
+    ax1.grid(True, alpha=0.3)
+    ax1.set_xlim(-0.5, num_days * 24 + 0.5)
+    ax1.set_ylim(min(-0.1*grid_max_power, min(results['Grid_Power']) - 0.1*grid_max_power), max(1.3*grid_max_power, max(results['Load_Demand']) + 0.1*grid_max_power))
     
-    buf = BytesIO()
+    # Plot 2: Battery State of Charge
+    ax2 = plt.subplot(3, 1, 2)
+    ax2.plot(results['Time_Hours'], results['Battery_SOC'], color=colors['battery'], linewidth=4, markersize=6, markerfacecolor='white', markeredgewidth=3, markevery=max(1, len(results['Time_Hours'])//100))
+    ax2.axhline(y=bess_min_soc*100, color='red', linestyle='--', alpha=0.7, linewidth=2, label=f'Min SOC ({bess_min_soc*100:.0f}%)')
+    ax2.axhline(y=bess_max_soc*100, color='green', linestyle='--', alpha=0.7, linewidth=2, label=f'Max SOC ({bess_max_soc*100:.0f}%)')
+    ax2.fill_between(results['Time_Hours'], bess_min_soc*100, bess_max_soc*100, alpha=0.1, color=colors['battery'])
+    ax2.set_title(f'Battery State of Charge ({num_days} Day{"s" if num_days > 1 else ""})', fontsize=16, pad=20)
+    ax2.set_xlabel('Time [hours]', fontsize=14)
+    ax2.set_ylabel('State of Charge [%]', fontsize=14)
+    ax2.set_ylim(-5, 105)
+    ax2.set_xlim(-0.5, num_days * 24 + 0.5)
+    ax2.grid(True, alpha=0.3)
+    ax2.legend(fontsize=12, framealpha=0.9, loc='upper right')
+    
+    # Plot 3: Hydrogen Storage Level
+    ax3 = plt.subplot(3, 1, 3)
+    ax3.plot(results['Time_Hours'], results['H2_SOC'], color=colors['h2'], linewidth=4, markersize=7, markerfacecolor='white', markeredgewidth=3, markevery=max(1, len(results['Time_Hours'])//100))
+    ax3.axhline(y=h2_min_soc*100, color='red', linestyle='--', alpha=0.7, linewidth=2, label=f'Min Level ({h2_min_soc*100:.0f}%)')
+    ax3.axhline(y=h2_max_soc*100, color='green', linestyle='--', alpha=0.7, linewidth=2, label=f'Max Level ({h2_max_soc*100:.0f}%)')
+    ax3.fill_between(results['Time_Hours'], h2_min_soc*100, h2_max_soc*100, alpha=0.1, color=colors['h2'])
+    ax3.set_title(f'Hydrogen Storage Level ({num_days} Day{"s" if num_days > 1 else ""})', fontsize=16, pad=20)
+    ax3.set_xlabel('Time [hours]', fontsize=14)
+    ax3.set_ylabel('Hydrogen Stored [% of Capacity]', fontsize=14)
+    ax3.set_ylim(-5, 105)
+    ax3.set_xlim(-0.5, num_days * 24 + 0.5)
+    ax3.grid(True, alpha=0.3)
+    ax3.legend(fontsize=12, framealpha=0.9, loc='upper right')
+    
     plt.tight_layout()
+    buf = BytesIO()
     plt.savefig(buf, format="png", dpi=150, bbox_inches='tight')
     buf.seek(0)
     plot_bytes = buf.read()
-    plt.close()  # Close the figure to free memory
+    plt.close()
 
     return summary, plot_bytes
 
@@ -532,13 +600,13 @@ async def optimize(
     time_resolution_minutes: int = Form(30),
     grid_connection: float = Form(2000),
     solar_connection: float = Form(2000),
-    battery_capacity: float = Form(80000),  # Wh (matching notebook default)
+    battery_capacity: float = Form(4000000),  # Wh (matching notebook: 40000 Ah * 100V = 4000000 Wh)
     battery_voltage: float = Form(100),
     diesel_capacity: float = Form(2200),
     fuel_price: float = Form(95),
-    pv_energy_cost: float = Form(2.95),  # Matching notebook
+    pv_energy_cost: float = Form(2.85),  # Matching notebook
     load_curtail_cost: float = Form(50),
-    battery_om_cost: float = Form(0.085)  # Matching notebook
+    battery_om_cost: float = Form(6.085)  # Matching notebook
 ):
     """
     Unified EMS optimization endpoint:
@@ -552,12 +620,12 @@ async def optimize(
     from io import BytesIO
 
     # -----------------------------
-    # Default 24-hour profiles (fallback)
+    # Default 24-hour profiles (fallback - matching notebook)
     # -----------------------------
-    load_profile = [1000, 750, 700, 650, 600, 650, 750, 850, 950, 1100, 1200,
-                    1300, 1250, 1200, 1150, 1200, 1300, 400, 1500, 1450, 1300, 1150, 800, 900]
+    load_profile = [800, 750, 700, 650, 600, 650, 750, 850, 950, 1100, 1200, 1300,
+                    1250, 1200, 1150, 1200, 1300, 1400, 1500, 1450, 1300, 1150, 1000, 900]
     price_profile = [3.5, 3.2, 3.0, 2.8, 2.5, 2.8, 4.2, 5.5, 6.2, 7.8, 8.5,
-                     9.2, 8.8, 8.2, 7.5, 8.0, 8.8, 6, 10.2, 9.8, 8.5, 7.2, 5.5, 2]
+                     9.2, 8.8, 8.2, 7.5, 8.0, 8.8, 9.5, 10.2, 9.8, 8.5, 7.2, 5.5, 4.2]
 
     inferred_days = num_days  # default to user input
 
@@ -567,14 +635,21 @@ async def optimize(
     if file:
         df = pd.read_csv(BytesIO(await file.read()))
 
-        if "Timestamp" in df.columns:
-            df["Timestamp"] = pd.to_datetime(df["Timestamp"])
-            df = df.sort_values("Timestamp")
+        # Check for datetime/timestamp columns (case-insensitive)
+        datetime_col = None
+        for col in df.columns:
+            if col.lower() in ['timestamp', 'datetime', 'date', 'time']:
+                datetime_col = col
+                break
+
+        if datetime_col:
+            df[datetime_col] = pd.to_datetime(df[datetime_col])
+            df = df.sort_values(datetime_col)
 
             # Infer resolution and duration
-            inferred_resolution = (df["Timestamp"].iloc[1] - df["Timestamp"].iloc[0]).seconds / 60
+            inferred_resolution = (df[datetime_col].iloc[1] - df[datetime_col].iloc[0]).seconds / 60
             time_resolution_minutes = int(inferred_resolution)
-            total_minutes = (df["Timestamp"].iloc[-1] - df["Timestamp"].iloc[0]).total_seconds() / 60
+            total_minutes = (df[datetime_col].iloc[-1] - df[datetime_col].iloc[0]).total_seconds() / 60
             inferred_days = max(1, round(total_minutes / (24 * 60)))
 
             print(f"📂 Using uploaded file with inferred {inferred_days} day(s) and {time_resolution_minutes}-minute resolution")
@@ -584,7 +659,7 @@ async def optimize(
         price_profile = df.iloc[:, df.columns.str.contains("Price", case=False)].squeeze().tolist()
 
         # Fallback: infer days if timestamp missing
-        if "Timestamp" not in df.columns:
+        if not datetime_col:
             records_per_day = int(24 * (60 / time_resolution_minutes))
             inferred_days = max(1, round(len(df) / records_per_day))
             print(f"📊 Inferred duration from row count: {inferred_days} day(s)")
@@ -638,7 +713,7 @@ async def optimize_with_plot(
         "time_resolution_minutes": time_resolution_minutes,
         "grid_connection": 2000,
         "solar_connection": 2000,
-        "battery_capacity": 40000,
+        "battery_capacity": 4000000,  # Wh (matching notebook: 40000 Ah * 100V = 4000000 Wh)
         "battery_voltage": 100,
         "diesel_capacity": 2200,
         "fuel_price": 95,
@@ -648,10 +723,10 @@ async def optimize_with_plot(
         "weather": weather
     }
 
-    load_profile_24h = [800, 700, 650, 600, 750, 900, 1200, 1400, 1300, 1150,
-                        1000, 900, 850, 800, 750, 700, 850, 950, 1100, 1300, 1200, 1100, 950, 850]
-    price_profile_24h = [3.5, 3.2, 2.8, 2.5, 3.5, 5.0, 7.5, 9.0, 8.5, 8.0,
-                         7.0, 5.5, 4.5, 4.0, 3.8, 4.5, 6.0, 8.0, 9.5, 10.0, 8.5, 6.5, 5.0, 4.0]
+    load_profile_24h = [800, 750, 700, 650, 600, 650, 750, 850, 950, 1100, 1200, 1300,
+                        1250, 1200, 1150, 1200, 1300, 1400, 1500, 1450, 1300, 1150, 1000, 900]
+    price_profile_24h = [3.5, 3.2, 3.0, 2.8, 2.5, 2.8, 4.2, 5.5, 6.2, 7.8, 8.5,
+                         9.2, 8.8, 8.2, 7.5, 8.0, 8.8, 9.5, 10.2, 9.8, 8.5, 7.2, 5.5, 4.2]
 
     try:
         _, plot_bytes = run_optimization(params, load_profile_24h, price_profile_24h)
