@@ -55,6 +55,14 @@ def run_optimization(params, load_profile_24h, price_profile_24h):
         battery_om_cost = max(0, float(params["battery_om_cost"]))  # INR/kWh
         weather = str(params["weather"]).lower()
         
+        # Hydrogen system parameters (with defaults if not provided)
+        electrolyzer_capacity = max(0, float(params.get("electrolyzer_capacity", 1000.0)))  # kW
+        fuel_cell_capacity = max(0, float(params.get("fuel_cell_capacity", 800.0)))  # kW
+        h2_tank_capacity = max(0, float(params.get("h2_tank_capacity", 100.0)))  # kg
+        fuel_cell_efficiency_percent = max(0, min(1, float(params.get("fuel_cell_efficiency_percent", 0.60))))  # 0-1
+        fuel_cell_om_cost = max(0, float(params.get("fuel_cell_om_cost", 1.5)))  # INR/kWh
+        electrolyzer_om_cost = max(0, float(params.get("electrolyzer_om_cost", 0.5)))  # INR/kWh
+        
         # Validate load and price profiles
         # Validate load and price profiles (allow multi-day or high-resolution data)
         if len(load_profile_24h) < 24:
@@ -82,14 +90,8 @@ def run_optimization(params, load_profile_24h, price_profile_24h):
     else:
         solar_scale = 1.0  # default to sunny
 
-    # Hydrogen system constants (matching notebook exactly)
-    electrolyzer_capacity = 1000.0  # kW
-    fuel_cell_capacity = 800.0      # kW
-    h2_tank_capacity = 100.0        # kg
-    fuel_cell_efficiency_percent = 0.60
+    # Hydrogen system constants (H2_LHV is fixed, not configurable)
     H2_LHV = 33.3  # kWh/kg
-    fuel_cell_om_cost = 1.5         # INR/kWh
-    electrolyzer_om_cost = 0.5      # INR/kWh
 
     step_size = time_resolution_minutes / 60.0
     steps_per_hour = int(60 / time_resolution_minutes)
@@ -403,7 +405,21 @@ def run_optimization(params, load_profile_24h, price_profile_24h):
     ax1.legend(loc='upper right', fontsize=10, framealpha=0.9, ncol=3)
     ax1.grid(True, alpha=0.3)
     ax1.set_xlim(-0.5, num_days * 24 + 0.5)
-    ax1.set_ylim(min(-0.1*grid_max_power, min(results['Grid_Power']) - 0.1*grid_max_power), max(1.3*grid_max_power, max(results['Load_Demand']) + 0.1*grid_max_power))
+    
+    # Calculate Y-axis range from -min to +max with margin
+    # Get all power values to find min and max
+    all_power_values = []
+    all_power_values.extend(results['Load_Demand'])
+    all_power_values.extend(results['Grid_Power'])
+    all_power_values.extend(results['Diesel_Power'])
+    all_power_values.extend(results['PV_Used'])
+    all_power_values.extend(results['Net_Battery_Power'])
+    all_power_values.extend(results['Net_H2_Power'])
+    
+    min_power = min(all_power_values)
+    max_power = max(all_power_values)
+    margin = max(abs(min_power), abs(max_power)) * 0.1  # 10% margin
+    ax1.set_ylim(min_power - margin, max_power + margin)
     
     # Plot 2: Battery State of Charge
     ax2 = plt.subplot(3, 1, 2)

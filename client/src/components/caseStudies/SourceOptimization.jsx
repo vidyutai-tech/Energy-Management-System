@@ -18,7 +18,14 @@ const LoadOptimization = () => {
     pv_energy_cost: 2.95,  // Matching notebook
     load_curtail_cost: 50,
     battery_om_cost: 0.085,  // Matching notebook
-    profile_type: "Auto detect"
+    profile_type: "Auto detect",
+    // Hydrogen system parameters
+    electrolyzer_capacity: 1000.0,
+    fuel_cell_capacity: 800.0,
+    h2_tank_capacity: 100.0,
+    fuel_cell_efficiency_percent: 0.60,
+    fuel_cell_om_cost: 1.5,
+    electrolyzer_om_cost: 0.5
   });
   const [response, setResponse] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -368,6 +375,98 @@ const LoadOptimization = () => {
                   onChange={handleInputChange}
                   className="input input-bordered w-full"
                   step="0.001"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Hydrogen System Parameters */}
+          <div className="mt-6">
+            <h3 className="text-lg font-semibold mb-4">Hydrogen System Parameters</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="form-control">
+                <label className="label">
+                  <span className="label-text">Electrolyzer Capacity (kW)</span>
+                </label>
+                <input
+                  type="number"
+                  name="electrolyzer_capacity"
+                  value={formData.electrolyzer_capacity}
+                  onChange={handleInputChange}
+                  className="input input-bordered w-full"
+                  step="10"
+                />
+              </div>
+
+              <div className="form-control">
+                <label className="label">
+                  <span className="label-text">Fuel Cell Capacity (kW)</span>
+                </label>
+                <input
+                  type="number"
+                  name="fuel_cell_capacity"
+                  value={formData.fuel_cell_capacity}
+                  onChange={handleInputChange}
+                  className="input input-bordered w-full"
+                  step="10"
+                />
+              </div>
+
+              <div className="form-control">
+                <label className="label">
+                  <span className="label-text">H2 Tank Capacity (kg)</span>
+                </label>
+                <input
+                  type="number"
+                  name="h2_tank_capacity"
+                  value={formData.h2_tank_capacity}
+                  onChange={handleInputChange}
+                  className="input input-bordered w-full"
+                  step="1"
+                />
+              </div>
+
+              <div className="form-control">
+                <label className="label">
+                  <span className="label-text">Fuel Cell Efficiency (0-1)</span>
+                </label>
+                <input
+                  type="number"
+                  name="fuel_cell_efficiency_percent"
+                  value={formData.fuel_cell_efficiency_percent}
+                  onChange={handleInputChange}
+                  className="input input-bordered w-full"
+                  step="0.01"
+                  min="0"
+                  max="1"
+                />
+              </div>
+
+              <div className="form-control">
+                <label className="label">
+                  <span className="label-text">Fuel Cell O&M Cost (Rs/kWh)</span>
+                </label>
+                <input
+                  type="number"
+                  name="fuel_cell_om_cost"
+                  value={formData.fuel_cell_om_cost}
+                  onChange={handleInputChange}
+                  className="input input-bordered w-full"
+                  step="0.1"
+                />
+              </div>
+
+              <div className="form-control">
+                <label className="label">
+                  <span className="label-text">Electrolyzer O&M Cost (Rs/kWh)</span>
+                </label>
+                <input
+                  type="number"
+                  name="electrolyzer_om_cost"
+                  value={formData.electrolyzer_om_cost}
+                  onChange={handleInputChange}
+                  className="input input-bordered w-full"
+                  step="0.1"
                 />
               </div>
             </div>
